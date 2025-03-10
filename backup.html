@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeni Mall FM</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h2>Jeni Mall FM</h2>
+
+    <audio id="audioPlayer" class="hidden"></audio>
+
+    <div class="controls">
+        <button id="playButton" onclick="togglePlayPause()">▶ Play</button>
+        <button id="pauseButton" onclick="pauseSong()">⏸ Pause</button>
+    </div>
+
+    <script>
+        let firstTwoSongs = ["song1.mp3", "song2.mp3"]; // First two songs
+        let songQueue = []; // Remaining songs
+        let playedSongs = []; // Tracks played songs
+        let firstTwoPlayed = false;
+        let isPaused = false;
+        let playAdNext = false; // Flag to track when to play an ad
+        let audioPlayer = document.getElementById("audioPlayer");
+        let playButton = document.getElementById("playButton");
+        let pauseButton = document.getElementById("pauseButton");
+
+        async function fetchSongs() {
+            try {
+                let response = await fetch("songs/songs.php"); // Fetch songs from PHP
+                let songs = await response.json();
+                songQueue = songs.filter(song => !firstTwoSongs.includes(song)); // Remove first two
+
+                // Shuffle remaining songs
+                for (let i = songQueue.length - 1; i > 0; i--) {
+                    let j = Math.floor(Math.random() * (i + 1));
+                    [songQueue[i], songQueue[j]] = [songQueue[j], songQueue[i]];
+                }
+
+                console.log("Songs loaded:", songQueue);
+                restorePlayback(); // Restore last playback if available
+            } catch (error) {
+                console.error("Error fetching songs:", error);
+            }
+        }
+
+        function getNextSong() {
+            if (!firstTwoPlayed && firstTwoSongs.length > 0) {
+                return firstTwoSongs.shift(); // Play first two songs first
+            } else {
+                firstTwoPlayed = true;
+                
+                if (playAdNext) {
+                    playAdNext = false; // Reset flag
+                    return "ads/ad1.mp3"; // Play the ad
+                }
+
+                if (songQueue.length === 0) {
+                    songQueue = playedSongs; // Reset played songs
+                    playedSongs = [];
+                }
+                
+                let nextSong = songQueue.shift(); // Get next song from queue
+                playedSongs.push(nextSong);
+                playAdNext = true; // Set flag to play ad after this song
+                return nextSong;
+            }
+        }
+
+        function playNextSong() {
+            let nextSong = getNextSong();
+            if (nextSong) {
+                audioPlayer.src = `songs/${encodeURIComponent(nextSong)}`;
+                audioPlayer.play();
+                isPaused = false;
+                savePlayback(nextSong, 0); // Save the current song and reset time
+                updateButtonStates();
+            }
+        }
+
+        function togglePlayPause() {
+            if (isPaused) {
+                audioPlayer.play(); // Resume
+                isPaused = false;
+            } else {
+                playNextSong(); // Start playing
+            }
+            updateButtonStates();
+        }
+
+        function pauseSong() {
+            audioPlayer.pause();
+            isPaused = true;
+            savePlayback(audioPlayer.src.split("/").pop(), audioPlayer.currentTime); // Save song and time
+            updateButtonStates();
+        }
+
+        function updateButtonStates() {
+            playButton.innerText = isPaused ? "▶ Resume" : "▶ Play";
+            playButton.disabled = !isPaused;
+            pauseButton.disabled = isPaused;
+        }
+
+        // Auto-play next song when the current one ends
+        audioPlayer.onended = () => {
+            playNextSong();
+        };
+
+        // Save the current song and playback time to localStorage
+        function savePlayback(song, time) {
+            localStorage.setItem("lastSong", song);
+            localStorage.setItem("lastTime", time);
+            localStorage.setItem("lastSession", Date.now()); // Save timestamp
+        }
+
+        // Restore playback if the user reopens the browser within 2 hours
+        function restorePlayback() {
+            let lastSession = localStorage.getItem("lastSession");
+            let lastSong = localStorage.getItem("lastSong");
+            let lastTime = parseFloat(localStorage.getItem("lastTime"));
+
+            // Check if last session was more than 2 hours ago (system shutdown)
+            if (lastSession && Date.now() - lastSession > 5 * 60 * 1000) {
+                console.log("System was shut down for more than 2 hours, starting fresh.");
+                return; // Start from beginning
+            }
+
+            if (lastSong) {
+                console.log("Resuming from:", lastSong, "at", lastTime, "seconds");
+                audioPlayer.src = `songs/${encodeURIComponent(lastSong)}`;
+                audioPlayer.currentTime = lastTime;
+
+                // Start playing after restoring time
+                audioPlayer.onloadedmetadata = () => {
+                    audioPlayer.play();
+                    isPaused = false;
+                    updateButtonStates();
+                };
+            }
+        }
+
+        // Save playback progress every 5 seconds to ensure continuity
+        setInterval(() => {
+            if (!isPaused) {
+                savePlayback(audioPlayer.src.split("/").pop(), audioPlayer.currentTime);
+            }
+        }, 2000); // Save every 5 seconds
+
+        // Fetch songs on page load
+        fetchSongs();
+    </script>
+</body>
+</html>

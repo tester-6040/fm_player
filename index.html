@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeni Mall FM</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h2>Jeni Mall FM</h2>
+
+    <audio id="audioPlayer" controls></audio>
+
+    <div class="controls">
+        <button id="playButton" onclick="togglePlayPause()">▶ Play</button>
+        <button id="pauseButton" onclick="pauseSong()">⏸ Pause</button>
+    </div>
+
+    <script>
+        let firstTwoSongs = ["song1.mp3", "song2.mp3"]; // First two songs
+        let songQueue = []; // Remaining songs
+        let playedSongs = new Set(); // Tracks played songs
+        let firstTwoPlayed = false;
+        let isPaused = false;
+        let audioPlayer = document.getElementById("audioPlayer");
+        let playButton = document.getElementById("playButton");
+        let pauseButton = document.getElementById("pauseButton");
+
+        async function fetchSongs() {
+            try {
+                let response = await fetch("songs/songs.php"); // Fetch songs from PHP
+                let songs = await response.json();
+                
+                // Filter out the first two songs
+                songQueue = songs.filter(song => !firstTwoSongs.includes(song));
+                
+                // Shuffle remaining songs randomly
+                songQueue = shuffleArray(songQueue);
+
+                console.log("Songs loaded:", songQueue);
+            } catch (error) {
+                console.error("Error fetching songs:", error);
+            }
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                let j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function getNextSong() {
+            if (!firstTwoPlayed && firstTwoSongs.length > 0) {
+                return firstTwoSongs.shift(); // Play first two songs first
+            } else {
+                firstTwoPlayed = true;
+                
+                // Remove already played songs from queue
+                songQueue = songQueue.filter(song => !playedSongs.has(song));
+                
+                if (songQueue.length === 0) {
+                    playedSongs.clear(); // Reset played songs
+                    songQueue = shuffleArray([...playedSongs]); // Reshuffle and replay
+                }
+                
+                let nextSong = songQueue.shift(); // Get next song from queue
+                playedSongs.add(nextSong);
+                return nextSong;
+            }
+        }
+
+        function playNextSong() {
+            let nextSong = getNextSong();
+            if (nextSong) {
+                audioPlayer.src = `songs/${encodeURIComponent(nextSong)}`;
+                audioPlayer.play();
+                isPaused = false;
+                updateButtonStates();
+            }
+        }
+
+        function togglePlayPause() {
+            if (isPaused) {
+                audioPlayer.play(); // Resume
+                isPaused = false;
+            } else {
+                playNextSong(); // Start playing
+            }
+            updateButtonStates();
+        }
+
+        function pauseSong() {
+            audioPlayer.pause();
+            isPaused = true;
+            updateButtonStates();
+        }
+
+        function updateButtonStates() {
+            playButton.innerText = isPaused ? "▶ Resume" : "▶ Play";
+            playButton.disabled = !isPaused;
+            pauseButton.disabled = isPaused;
+        }
+
+        // Auto-play next song when the current one ends
+        audioPlayer.onended = () => {
+            playNextSong();
+        };
+
+        // Fetch songs on page load
+        fetchSongs();
+    </script>
+</body>
+</html>
